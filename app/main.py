@@ -8,7 +8,7 @@ from slowapi.errors import RateLimitExceeded
 from app.core.config import settings
 from app.core.rate_limit import limiter
 from app.routers import (
-    activity, ai, alert, auth, household, inventory, invitation,
+    activity, ai, alert, auth, expiry, household, inventory, invitation,
     products, recipes, refrigerator, shopping, zone,
 )
 from app.workers.scheduler import start_scheduler, stop_scheduler
@@ -58,6 +58,7 @@ app.include_router(invitation.router)
 app.include_router(ai.router)
 app.include_router(products.router)
 app.include_router(recipes.router)
+app.include_router(expiry.router)
 
 
 @app.get("/api/health")

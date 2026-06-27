@@ -16,6 +16,16 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class LogoutRequest(BaseModel):
+    """Optional body for POST /api/auth/logout.
+
+    Sending `refresh_token` here ensures BOTH tokens are revoked server-side
+    (RF-AUT-004). The access token is always taken from the Authorization
+    header.
+    """
+    refresh_token: str | None = None
+
+
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str

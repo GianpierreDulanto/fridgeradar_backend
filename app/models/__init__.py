@@ -171,3 +171,20 @@ class ActivityLog(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     actor = relationship("User", foreign_keys=[actor_user_id])
+
+
+class TokenBlacklist(Base):
+    """Server-side JWT revocation list (RF-AUT-004).
+
+    Each row is a revoked JWT identified by its `jti` (UUID minted at token
+    creation). `expires_at` mirrors the JWT's `exp` claim so the row can be
+    safely dropped once the token would have expired anyway. All read queries
+    filter on `expires_at > now()` so old rows never match a live check.
+    """
+    __tablename__ = "token_blacklist"
+
+    jti = Column(UUID(as_uuid=True), primary_key=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    revoked_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    reason = Column(String(50), nullable=True)  # "logout", "admin_revoke", etc.

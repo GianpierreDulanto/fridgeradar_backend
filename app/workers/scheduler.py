@@ -3,6 +3,7 @@ Background scheduler for periodic tasks.
 
 Currently runs:
   - alert_service.scan_and_generate() every `SCAN_INTERVAL_MINUTES` minutes
+  - token_blacklist cleanup every hour (RF-AUT-004 hygiene)
 
 The scheduler is started in app.main:start_scheduler() during the FastAPI
 lifespan event and shut down cleanly on app shutdown.
@@ -19,6 +20,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from app.core.database import SessionLocal
+from app.core.security import cleanup_revoked_tokens
 from app.services.alert_service import AlertService
 
 logger = logging.getLogger(__name__)
@@ -44,6 +46,19 @@ def _run_scan() -> None:
         db.close()
 
 
+def _run_token_cleanup() -> None:
+    """Drop expired entries from the JWT blacklist (RF-AUT-004)."""
+    db = SessionLocal()
+    try:
+        deleted = cleanup_revoked_tokens(db)
+        if deleted:
+            logger.info("scheduler: cleaned %s expired blacklist rows", deleted)
+    except Exception:
+        logger.exception("scheduler: token_blacklist cleanup failed")
+    finally:
+        db.close()
+
+
 def start_scheduler() -> BackgroundScheduler | None:
     """Idempotent. Returns the scheduler instance or None if disabled."""
     global _scheduler
@@ -63,10 +78,20 @@ def start_scheduler() -> BackgroundScheduler | None:
         max_instances=1,
         coalesce=True,
     )
+    scheduler.add_job(
+        _run_token_cleanup,
+        trigger=IntervalTrigger(hours=1),
+        id="token_blacklist_cleanup",
+        name="Drop expired JWT blacklist entries",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
     scheduler.start()
     _scheduler = scheduler
     logger.info(
-        "scheduler: started, alert scan every %s minutes", SCAN_INTERVAL_MINUTES,
+        "scheduler: started, alert scan every %s min + token cleanup hourly",
+        SCAN_INTERVAL_MINUTES,
     )
     return scheduler
 

@@ -8,6 +8,7 @@ from app.core.security import (
     create_refresh_token,
     decode_token,
     hash_password,
+    is_token_revoked,
     verify_password,
 )
 from app.repositories.user_repository import UserRepository
@@ -40,11 +41,20 @@ class AuthService:
         return self._build_token_response(user)
 
     def refresh(self, refresh_token: str) -> dict:
+        from app.core.database import get_db
+        from app.core.security import is_token_revoked
+
         payload = decode_token(refresh_token)
         if payload is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired refresh token",
+            )
+        # RF-AUT-004: a revoked refresh token cannot mint new access tokens
+        if is_token_revoked(payload.get("jti"), self.repo.db):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Refresh token has been revoked",
             )
         user_id = payload.get("sub")
         if not user_id:
@@ -89,6 +99,7 @@ def get_auth_service(db: Session = Depends(get_db)) -> AuthService:
 
 def get_current_user(
     auth_service: AuthService = Depends(get_auth_service),
+    db: Session = Depends(get_db),
     token: str | None = Depends(bearer_scheme),
 ) -> dict:
     if token is None:
@@ -101,6 +112,12 @@ def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
+        )
+    # RF-AUT-004: check the server-side revocation list
+    if is_token_revoked(payload.get("jti"), db):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked",
         )
     user_id = payload.get("sub")
     if not user_id:

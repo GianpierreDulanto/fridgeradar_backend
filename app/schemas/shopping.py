@@ -8,6 +8,7 @@ class ShoppingItemCreate(BaseModel):
     product_name: str
     quantity: float | None = None
     unit: str | None = None
+    source: str | None = None  # e.g. "recipe:Fruit Salad"
 
 
 class ShoppingItemUpdate(BaseModel):
@@ -29,3 +30,10 @@ class ShoppingItemResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class AddRecipeMissingRequest(BaseModel):
+    """Payload for POST /api/shopping-lists/from-recipe (RF-REC-015)."""
+
+    household_id: str
+    recipe_name: str

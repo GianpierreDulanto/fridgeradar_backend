@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
+from app.core.rate_limit import AUTH_LIMIT, limiter
 from app.schemas.auth import (
     LoginRequest,
     RefreshRequest,
@@ -13,22 +14,26 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=TokenResponse)
-def register(body: RegisterRequest, auth: AuthService = Depends(get_auth_service)):
+@limiter.limit(AUTH_LIMIT)
+def register(request: Request, body: RegisterRequest, auth: AuthService = Depends(get_auth_service)):
     return auth.register(email=body.email, password=body.password, full_name=body.full_name)
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(body: LoginRequest, auth: AuthService = Depends(get_auth_service)):
+@limiter.limit(AUTH_LIMIT)
+def login(request: Request, body: LoginRequest, auth: AuthService = Depends(get_auth_service)):
     return auth.login(email=body.email, password=body.password)
 
 
 @router.post("/refresh", response_model=TokenResponse)
-def refresh(body: RefreshRequest, auth: AuthService = Depends(get_auth_service)):
+@limiter.limit(AUTH_LIMIT)
+def refresh(request: Request, body: RefreshRequest, auth: AuthService = Depends(get_auth_service)):
     return auth.refresh(refresh_token=body.refresh_token)
 
 
 @router.post("/logout")
-def logout():
+@limiter.limit(AUTH_LIMIT)
+def logout(request: Request):
     return {"message": "Logged out"}
 
 

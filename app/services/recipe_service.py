@@ -65,12 +65,29 @@ GEMINI_TIMEOUT_SECONDS = 15
 # Each recipe lists the categories it draws from. The matcher checks if the
 # user has any active product in each required category. Quantities / units
 # are illustrative (frontend displays them; matcher only cares about presence).
+#
+# `dietary` is a set of tags; valid tags are exposed in `VALID_DIETARY_TAGS`
+# below. `difficulty` ∈ {"easy","medium","hard"}. `max_time_minutes` is used
+# by the `?max_time=` filter on /api/recipes/suggest.
+
+VALID_DIFFICULTIES = ("easy", "medium", "hard")
+VALID_DIETARY_TAGS = (
+    "vegetarian",
+    "vegan",
+    "gluten_free",
+    "dairy_free",
+    "high_protein",
+    "low_carb",
+)
 
 FALLBACK_RECIPES: list[dict] = [
     {
         "name": "Cereal Bowl",
         "description": "Quick breakfast with dairy and grains.",
         "needs_categories": ["Dairy", "Grains"],
+        "max_time_minutes": 5,
+        "difficulty": "easy",
+        "dietary": ["vegetarian"],
         "ingredients": [
             {"name": "Whole Milk", "category": "Dairy", "quantity": 0.25, "unit": "lt"},
             {"name": "White Rice", "category": "Grains", "quantity": 0.05, "unit": "kg"},
@@ -80,6 +97,9 @@ FALLBACK_RECIPES: list[dict] = [
         "name": "Stir Fry",
         "description": "Quick stir fry with your vegetables and meat.",
         "needs_categories": ["Vegetables", "Meat"],
+        "max_time_minutes": 25,
+        "difficulty": "medium",
+        "dietary": ["high_protein"],
         "ingredients": [
             {"name": "Fresh Spinach", "category": "Vegetables", "quantity": 0.2, "unit": "kg"},
             {"name": "Beef Steak", "category": "Meat", "quantity": 0.15, "unit": "kg"},
@@ -89,6 +109,9 @@ FALLBACK_RECIPES: list[dict] = [
         "name": "Fruit Salad",
         "description": "Fresh fruit salad for a healthy snack.",
         "needs_categories": ["Fruits"],
+        "max_time_minutes": 10,
+        "difficulty": "easy",
+        "dietary": ["vegetarian", "vegan", "gluten_free", "dairy_free"],
         "ingredients": [
             {"name": "Bananas", "category": "Fruits", "quantity": 1, "unit": "units"},
             {"name": "Red Apples", "category": "Fruits", "quantity": 1, "unit": "units"},
@@ -98,6 +121,9 @@ FALLBACK_RECIPES: list[dict] = [
         "name": "Pasta with Tomato Sauce",
         "description": "Classic comfort food, ready in 15 minutes.",
         "needs_categories": ["Pasta", "Sauces"],
+        "max_time_minutes": 15,
+        "difficulty": "easy",
+        "dietary": ["vegetarian", "vegan"],
         "ingredients": [
             {"name": "Spaghetti", "category": "Pasta", "quantity": 0.2, "unit": "kg"},
             {"name": "Tomato Sauce", "category": "Sauces", "quantity": 0.15, "unit": "lt"},
@@ -107,6 +133,9 @@ FALLBACK_RECIPES: list[dict] = [
         "name": "Chicken and Rice",
         "description": "Simple one-pan chicken with rice.",
         "needs_categories": ["Poultry", "Grains"],
+        "max_time_minutes": 35,
+        "difficulty": "medium",
+        "dietary": ["gluten_free", "dairy_free", "high_protein"],
         "ingredients": [
             {"name": "Chicken Breast", "category": "Poultry", "quantity": 0.2, "unit": "kg"},
             {"name": "White Rice", "category": "Grains", "quantity": 0.1, "unit": "kg"},
@@ -116,6 +145,9 @@ FALLBACK_RECIPES: list[dict] = [
         "name": "French Toast",
         "description": "Sweet breakfast with eggs and bread.",
         "needs_categories": ["Poultry", "Bread"],
+        "max_time_minutes": 15,
+        "difficulty": "easy",
+        "dietary": ["vegetarian"],
         "ingredients": [
             {"name": "Free-Range Eggs", "category": "Poultry", "quantity": 2, "unit": "units"},
             {"name": "Whole Wheat Bread", "category": "Bread", "quantity": 2, "unit": "units"},
@@ -125,6 +157,9 @@ FALLBACK_RECIPES: list[dict] = [
         "name": "Veggie Omelet",
         "description": "Quick omelet with vegetables.",
         "needs_categories": ["Poultry", "Vegetables"],
+        "max_time_minutes": 12,
+        "difficulty": "easy",
+        "dietary": ["vegetarian", "gluten_free", "high_protein", "low_carb"],
         "ingredients": [
             {"name": "Free-Range Eggs", "category": "Poultry", "quantity": 3, "unit": "units"},
             {"name": "Fresh Spinach", "category": "Vegetables", "quantity": 0.1, "unit": "kg"},
@@ -134,9 +169,38 @@ FALLBACK_RECIPES: list[dict] = [
         "name": "Cheese Toast",
         "description": "Toasted bread with melted cheese.",
         "needs_categories": ["Dairy", "Bread"],
+        "max_time_minutes": 8,
+        "difficulty": "easy",
+        "dietary": ["vegetarian"],
         "ingredients": [
             {"name": "Cheddar Cheese", "category": "Dairy", "quantity": 0.05, "unit": "kg"},
             {"name": "Whole Wheat Bread", "category": "Bread", "quantity": 2, "unit": "units"},
+        ],
+    },
+    {
+        "name": "Veggie Rice Bowl",
+        "description": "Rice bowl loaded with fresh vegetables.",
+        "needs_categories": ["Grains", "Vegetables"],
+        "max_time_minutes": 25,
+        "difficulty": "easy",
+        "dietary": ["vegetarian", "vegan", "gluten_free", "dairy_free"],
+        "ingredients": [
+            {"name": "White Rice", "category": "Grains", "quantity": 0.15, "unit": "kg"},
+            {"name": "Fresh Spinach", "category": "Vegetables", "quantity": 0.15, "unit": "kg"},
+            {"name": "Red Apples", "category": "Fruits", "quantity": 1, "unit": "units"},
+        ],
+    },
+    {
+        "name": "Beef Tacos",
+        "description": "Tacos stuffed with seasoned beef and fresh salsa.",
+        "needs_categories": ["Meat", "Vegetables", "Bakery"],
+        "max_time_minutes": 30,
+        "difficulty": "medium",
+        "dietary": ["dairy_free"],
+        "ingredients": [
+            {"name": "Beef Steak", "category": "Meat", "quantity": 0.2, "unit": "kg"},
+            {"name": "Fresh Spinach", "category": "Vegetables", "quantity": 0.1, "unit": "kg"},
+            {"name": "Whole Wheat Bread", "category": "Bakery", "quantity": 2, "unit": "units"},
         ],
     },
 ]
@@ -155,11 +219,27 @@ class RecipeService:
     # Public API
     # ------------------------------------------------------------------
 
-    def suggest(self, household_id: str, current_user: dict) -> RecipeListResponse:
+    def suggest(
+        self,
+        household_id: str,
+        current_user: dict,
+        max_time: int | None = None,
+        difficulty: str | None = None,
+        dietary: list[str] | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> RecipeListResponse:
+        """Suggest recipes for the household, with optional filters and pagination.
+
+        RF-REC-017: max_time, difficulty, dietary filters.
+        RF-REC-018: limit/offset pagination.
+        RF-REC-019: not implemented here (see daily()).
+        """
         self._check_membership(household_id, current_user["id"])
+        self._validate_filters(difficulty=difficulty, dietary=dietary)
+
         items = self.repo.list_by_household(household_id, status="active")
         have_index = self._build_have_index(items)
-
         summary = self._inventory_summary(items)
 
         if not items:
@@ -168,18 +248,140 @@ class RecipeService:
                 source="fallback",
                 message="No items in inventory",
                 inventory_summary=summary,
+                total=0,
+                limit=limit,
+                offset=offset,
             )
 
         # Try Gemini first
         ai_recipes = self._generate_with_gemini(have_index, current_user)
+        scored: list[Recipe]
+        source: str
         if ai_recipes:
             scored = [self._score_recipe(r, have_index) for r in ai_recipes]
-            return self._finalize(scored, source="ai", summary=summary)
+            source = "ai"
+        else:
+            fallback = [
+                self._fallback_recipe_to_dict(r, have_index)
+                for r in FALLBACK_RECIPES
+            ]
+            scored = [self._score_recipe(r, have_index) for r in fallback if r is not None]
+            source = "fallback"
 
-        # Fallback: hardcoded recipes that match what's in the user's kitchen
-        fallback = [self._fallback_recipe_to_dict(r, have_index) for r in FALLBACK_RECIPES]
-        scored = [self._score_recipe(r, have_index) for r in fallback if r is not None]
-        return self._finalize(scored, source="fallback", summary=summary)
+        # Apply filters (RF-REC-017)
+        scored = self._apply_filters(scored, max_time=max_time, difficulty=difficulty, dietary=dietary)
+
+        return self._finalize_paginated(
+            scored, source=source, summary=summary, limit=limit, offset=offset
+        )
+
+    def daily(self, household_id: str, current_user: dict) -> Recipe:
+        """Return today's recipe of the day (RF-REC-019).
+
+        Deterministic per day: index = day_of_year % len(matched_recipes). If
+        the household has no usable recipes, returns the first fallback recipe
+        so the UI always has something to show.
+        """
+        self._check_membership(household_id, current_user["id"])
+        items = self.repo.list_by_household(household_id, status="active")
+        have_index = self._build_have_index(items)
+        summary = self._inventory_summary(items)
+
+        if not items:
+            # Still return a fallback so the UI is never empty.
+            chosen = FALLBACK_RECIPES[0]
+        else:
+            ai_recipes = self._generate_with_gemini(have_index, current_user)
+            candidates: list[dict] = []
+            if ai_recipes:
+                candidates = ai_recipes
+            else:
+                for r in FALLBACK_RECIPES:
+                    normalized = self._fallback_recipe_to_dict(r, have_index)
+                    if normalized is not None:
+                        candidates.append(normalized)
+            if not candidates:
+                chosen = FALLBACK_RECIPES[0]
+            else:
+                scored = [self._score_recipe(c, have_index) for c in candidates]
+                scored.sort(
+                    key=lambda r: (r.priority_score, r.match_pct, r.waste_rescue_score),
+                    reverse=True,
+                )
+                day_idx = date.today().toordinal() % len(scored)
+                chosen_dict = candidates[day_idx] if day_idx < len(candidates) else candidates[0]
+                return self._score_recipe(chosen_dict, have_index)
+
+        normalized = self._fallback_recipe_to_dict(chosen, have_index) or chosen
+        return self._score_recipe(normalized, have_index)
+
+    def missing_ingredients_for_recipe(
+        self, household_id: str, recipe_name: str, current_user: dict
+    ) -> list[dict]:
+        """Return the list of ingredients the household is MISSING for a recipe.
+
+        Used by RF-REC-015 to push to the shopping list.
+        """
+        self._check_membership(household_id, current_user["id"])
+        items = self.repo.list_by_household(household_id, status="active")
+        have_index = self._build_have_index(items)
+
+        recipe = self._find_recipe_by_name(recipe_name)
+        if recipe is None:
+            raise HTTPException(status_code=404, detail=f"Recipe '{recipe_name}' not found")
+
+        scored = self._score_recipe(recipe, have_index)
+        return [
+            {
+                "name": ing.name,
+                "quantity": ing.quantity,
+                "unit": ing.unit,
+            }
+            for ing in scored.need_ingredients
+        ]
+
+    @staticmethod
+    def _find_recipe_by_name(name: str) -> dict | None:
+        target = name.strip().lower()
+        for r in FALLBACK_RECIPES:
+            if r["name"].lower() == target:
+                return r
+        return None
+
+    @staticmethod
+    def _validate_filters(difficulty: str | None, dietary: list[str] | None) -> None:
+        if difficulty is not None and difficulty not in VALID_DIFFICULTIES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid difficulty '{difficulty}'. Allowed: {list(VALID_DIFFICULTIES)}",
+            )
+        if dietary:
+            invalid = [d for d in dietary if d not in VALID_DIETARY_TAGS]
+            if invalid:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid dietary tag(s): {invalid}. Allowed: {list(VALID_DIETARY_TAGS)}",
+                )
+
+    @staticmethod
+    def _apply_filters(
+        recipes: list[Recipe],
+        max_time: int | None,
+        difficulty: str | None,
+        dietary: list[str] | None,
+    ) -> list[Recipe]:
+        out = recipes
+        if max_time is not None:
+            out = [
+                r for r in out
+                if r.max_time_minutes is None or r.max_time_minutes <= max_time
+            ]
+        if difficulty is not None:
+            out = [r for r in out if r.difficulty == difficulty]
+        if dietary:
+            wanted = set(dietary)
+            out = [r for r in out if wanted.issubset(set(r.dietary or []))]
+        return out
 
     def cook(
         self,
@@ -383,6 +585,9 @@ class RecipeService:
             "description": recipe["description"],
             "needs_categories": recipe["needs_categories"],
             "ingredients": recipe["ingredients"],
+            "max_time_minutes": recipe.get("max_time_minutes"),
+            "difficulty": recipe.get("difficulty"),
+            "dietary": list(recipe.get("dietary", [])),
         }
 
     # ----- Scoring -----
@@ -481,6 +686,9 @@ class RecipeService:
             have_ingredients=have,
             need_ingredients=need,
             source=recipe.get("source", "fallback"),
+            max_time_minutes=recipe.get("max_time_minutes"),
+            difficulty=recipe.get("difficulty"),
+            dietary=list(recipe.get("dietary", [])),
         )
 
     def _finalize(
@@ -497,6 +705,31 @@ class RecipeService:
             recipes=scored,
             source=source,
             inventory_summary=summary,
+            total=len(scored),
+            limit=len(scored),
+            offset=0,
+        )
+
+    def _finalize_paginated(
+        self,
+        scored: list[Recipe],
+        source: str,
+        summary: dict,
+        limit: int,
+        offset: int,
+    ) -> RecipeListResponse:
+        scored.sort(key=lambda r: (r.priority_score, r.match_pct, r.waste_rescue_score), reverse=True)
+        for r in scored:
+            r.source = source
+        total = len(scored)
+        window = scored[offset : offset + limit]
+        return RecipeListResponse(
+            recipes=window,
+            source=source,
+            inventory_summary=summary,
+            total=total,
+            limit=limit,
+            offset=offset,
         )
 
 

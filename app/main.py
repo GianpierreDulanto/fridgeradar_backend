@@ -2,8 +2,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.core.config import settings
+from app.core.rate_limit import limiter
 from app.routers import (
     activity, ai, alert, auth, household, inventory, invitation,
     products, recipes, refrigerator, shopping, zone,
@@ -23,6 +26,10 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# RF-COM-007: register the rate limiter on the app state so slowapi can find it.
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 origins = [
     "http://localhost:3000",

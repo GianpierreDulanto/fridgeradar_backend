@@ -128,6 +128,7 @@ class AlertService:
             if spec:
                 key = (spec["type"], str(item.id))
                 if key not in existing_keys:
+                    spec["household_id"] = item.household_id
                     spec["inventory_item_id"] = item.id
                     out.append(spec)
 

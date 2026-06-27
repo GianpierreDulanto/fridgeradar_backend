@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from datetime import date, datetime
 
 
@@ -12,6 +12,16 @@ class InventoryCreate(BaseModel):
     purchase_date: date | None = None
     expiry_date: date | None = None
     low_stock_threshold: float | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def _validate_dates(self) -> "InventoryCreate":
+        if (
+            self.purchase_date is not None
+            and self.expiry_date is not None
+            and self.expiry_date < self.purchase_date
+        ):
+            raise ValueError("expiry_date must be on or after purchase_date")
+        return self
 
 
 class InventoryUpdate(BaseModel):

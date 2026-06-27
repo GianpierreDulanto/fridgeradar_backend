@@ -28,6 +28,9 @@ class Recipe(BaseModel):
     have_ingredients: list[RecipeIngredient] = []
     need_ingredients: list[RecipeIngredient] = []
     source: str = "fallback"  # "ai" or "fallback"
+    max_time_minutes: int | None = None
+    difficulty: str | None = None  # "easy" | "medium" | "hard"
+    dietary: list[str] = []
 
 
 class RecipeListResponse(BaseModel):
@@ -35,6 +38,9 @@ class RecipeListResponse(BaseModel):
     source: str  # "ai" or "fallback" — source of the suggestions
     message: str | None = None
     inventory_summary: dict | None = None  # counts: {have, urgent, expired, low_stock}
+    total: int = 0  # total matched before limit/offset (RF-REC-018)
+    limit: int = 0
+    offset: int = 0
 
 
 # Internal schema used to parse the JSON returned by Gemini.

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 
 from app.schemas.shopping import (
+    AddRecipeMissingRequest,
     ShoppingItemCreate,
     ShoppingItemUpdate,
     ShoppingItemResponse,
@@ -34,6 +35,21 @@ def add_item(
         product_name=body.product_name,
         quantity=body.quantity,
         unit=body.unit,
+        current_user=current_user,
+        source=body.source,
+    )
+
+
+@router.post("/from-recipe")
+def add_recipe_missing(
+    body: AddRecipeMissingRequest,
+    current_user: dict = Depends(get_current_user),
+    service: ShoppingService = Depends(get_shopping_service),
+):
+    """RF-REC-015: push every missing ingredient of a recipe to the shopping list."""
+    return service.add_recipe_missing(
+        household_id=body.household_id,
+        recipe_name=body.recipe_name,
         current_user=current_user,
     )
 

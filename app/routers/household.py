@@ -22,7 +22,13 @@ def create_household(
     current_user: dict = Depends(get_current_user),
     service: HouseholdService = Depends(get_household_service),
 ):
-    return service.create(name=body.name, timezone=body.timezone, current_user=current_user)
+    return service.create(
+        name=body.name,
+        timezone=body.timezone,
+        current_user=current_user,
+        create_freezer=body.create_freezer,
+        create_pantry=body.create_pantry,
+    )
 
 
 @router.get("", response_model=list[HouseholdResponse])

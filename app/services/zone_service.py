@@ -2,6 +2,7 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.models import Zone
 from app.repositories.zone_repository import ZoneRepository
 from app.repositories.household_repository import HouseholdRepository
 from app.services.auth_service import get_current_user
@@ -49,6 +50,7 @@ class ZoneService:
             "name": zone.name,
             "type": zone.type,
             "sort_order": zone.sort_order,
+            "refrigerator_id": str(zone.refrigerator_id) if zone.refrigerator_id else None,
             "created_at": zone.created_at.isoformat(),
         }
 

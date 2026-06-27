@@ -95,6 +95,7 @@ class Product(Base):
     default_unit = Column(String(50), nullable=True)
     image_url = Column(String(500), nullable=True)
     notes = Column(Text, nullable=True)
+    low_stock_threshold = Column(Numeric(10, 2), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
@@ -115,6 +116,7 @@ class InventoryItem(Base):
     expiry_date = Column(Date, nullable=True, index=True)
     opened_date = Column(Date, nullable=True)
     status = Column(Enum("active", "consumed", "discarded", "archived", name="item_status"), nullable=False, default="active")
+    priority_score = Column(Numeric(6, 2), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
@@ -136,6 +138,7 @@ class Alert(Base):
     due_at = Column(DateTime(timezone=True), nullable=True)
     read_at = Column(DateTime(timezone=True), nullable=True)
     resolved_at = Column(DateTime(timezone=True), nullable=True)
+    priority_score = Column(Numeric(6, 2), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     inventory_item = relationship("InventoryItem", back_populates="alerts")
@@ -166,3 +169,5 @@ class ActivityLog(Base):
     action = Column(String(100), nullable=False)
     extra_data = Column("metadata", JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    actor = relationship("User", foreign_keys=[actor_user_id])

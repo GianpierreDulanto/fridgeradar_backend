@@ -5,6 +5,8 @@ from datetime import datetime
 class HouseholdCreate(BaseModel):
     name: str
     timezone: str = "UTC"
+    create_freezer: bool = True
+    create_pantry: bool = False
 
 
 class HouseholdUpdate(BaseModel):

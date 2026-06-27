@@ -12,22 +12,57 @@ class HouseholdService:
         self.repo = HouseholdRepository(db)
         self.user_repo = UserRepository(db)
 
-    def create(self, name: str, timezone: str, current_user: dict) -> dict:
+    def create(
+        self,
+        name: str,
+        timezone: str,
+        current_user: dict,
+        create_freezer: bool = True,
+        create_pantry: bool = False,
+    ) -> dict:
         household = self.repo.create(name=name, timezone=timezone, owner_user_id=current_user["id"])
         self.repo.add_member(household_id=str(household.id), user_id=current_user["id"], role="owner")
 
-        # Auto-create default Refrigerator and Pantry
         from app.models.refrigerator import Refrigerator
         from app.models import Zone
 
-        fridge = Refrigerator(household_id=household.id, name="Refrigerator", type="refrigerator", sort_order=0)
-        pantry = Refrigerator(household_id=household.id, name="Pantry", type="pantry", sort_order=1)
-        self.repo.db.add_all([fridge, pantry])
+        refrigerators_to_add: list[Refrigerator] = [
+            Refrigerator(household_id=household.id, name="Refrigerator", type="refrigerator", sort_order=0),
+        ]
+        if create_freezer:
+            refrigerators_to_add.append(
+                Refrigerator(household_id=household.id, name="Freezer", type="freezer", sort_order=1)
+            )
+        if create_pantry:
+            sort_order = 2 if create_freezer else 1
+            refrigerators_to_add.append(
+                Refrigerator(household_id=household.id, name="Pantry", type="pantry", sort_order=sort_order)
+            )
+        self.repo.db.add_all(refrigerators_to_add)
         self.repo.db.flush()
 
-        fridge_zone = Zone(household_id=household.id, refrigerator_id=fridge.id, name="Main Shelves", type="refrigerator", sort_order=0)
-        pantry_zone = Zone(household_id=household.id, refrigerator_id=pantry.id, name="Shelves", type="pantry", sort_order=0)
-        self.repo.db.add_all([fridge_zone, pantry_zone])
+        zones_to_add: list[Zone] = [
+            Zone(
+                household_id=household.id, refrigerator_id=refrigerators_to_add[0].id,
+                name="Main Shelves", type="refrigerator", sort_order=0,
+            ),
+        ]
+        if create_freezer:
+            zones_to_add.append(
+                Zone(
+                    household_id=household.id, refrigerator_id=refrigerators_to_add[1].id,
+                    name="Freezer Drawers", type="freezer", sort_order=0,
+                )
+            )
+        if create_pantry:
+            pantry_index = 2 if create_freezer else 1
+            zones_to_add.append(
+                Zone(
+                    household_id=household.id, refrigerator_id=refrigerators_to_add[pantry_index].id,
+                    name="Pantry Shelves", type="pantry", sort_order=0,
+                )
+            )
+        self.repo.db.add_all(zones_to_add)
         self.repo.db.commit()
 
         return self._to_response(household)

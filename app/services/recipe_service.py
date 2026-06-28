@@ -17,6 +17,7 @@ reused from the scheduler or CLI in the future.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -43,6 +44,11 @@ from app.schemas.recipe import (
     RecipeListResponse,
 )
 from app.services.auth_service import get_current_user
+from app.services.gemini_throttle import (
+    GeminiThrottle,
+    _GeminiRateLimited,
+    gemini_throttle,
+)
 from app.services.expiry_service import (
     DEFAULT_LOW_STOCK_THRESHOLD,
     compute_expiry,
@@ -57,6 +63,19 @@ GEMINI_URL = (
     "gemini-2.0-flash:generateContent"
 )
 GEMINI_TIMEOUT_SECONDS = 15
+
+
+def _stable_recipe_id(name: str, source: str = "fallback") -> str:
+    """Deterministic id for a recipe based on its name + source.
+
+    The frontend uses this id as a React key and to address the same recipe
+    across pages. We use a SHA-1 of `name|source` (truncated to 16 chars) so:
+      * the same recipe always gets the same id (stable React keys, real
+        pagination/dedup),
+      * AI and fallback variants of the same name don't collide.
+    """
+    raw = f"{(name or '').strip().lower()}|{source}"
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
 
 # ---------------------------------------------------------------------------
@@ -82,125 +101,125 @@ VALID_DIETARY_TAGS = (
 
 FALLBACK_RECIPES: list[dict] = [
     {
-        "name": "Cereal Bowl",
-        "description": "Quick breakfast with dairy and grains.",
-        "needs_categories": ["Dairy", "Grains"],
+        "name": "Tazón de Cereal",
+        "description": "Desayuno rápido con lácteos y granos.",
+        "needs_categories": ["Lácteos", "Granos"],
         "max_time_minutes": 5,
         "difficulty": "easy",
         "dietary": ["vegetarian"],
         "ingredients": [
-            {"name": "Whole Milk", "category": "Dairy", "quantity": 0.25, "unit": "lt"},
-            {"name": "White Rice", "category": "Grains", "quantity": 0.05, "unit": "kg"},
+            {"name": "Leche Entera", "category": "Lácteos", "quantity": 0.25, "unit": "lt"},
+            {"name": "Arroz Blanco", "category": "Granos", "quantity": 0.05, "unit": "kg"},
         ],
     },
     {
-        "name": "Stir Fry",
-        "description": "Quick stir fry with your vegetables and meat.",
-        "needs_categories": ["Vegetables", "Meat"],
+        "name": "Salteado de Verduras",
+        "description": "Salteado rápido con tus verduras y carne.",
+        "needs_categories": ["Verduras", "Carne"],
         "max_time_minutes": 25,
         "difficulty": "medium",
         "dietary": ["high_protein"],
         "ingredients": [
-            {"name": "Fresh Spinach", "category": "Vegetables", "quantity": 0.2, "unit": "kg"},
-            {"name": "Beef Steak", "category": "Meat", "quantity": 0.15, "unit": "kg"},
+            {"name": "Espinaca Fresca", "category": "Verduras", "quantity": 0.2, "unit": "kg"},
+            {"name": "Bistec de Res", "category": "Carne", "quantity": 0.15, "unit": "kg"},
         ],
     },
     {
-        "name": "Fruit Salad",
-        "description": "Fresh fruit salad for a healthy snack.",
-        "needs_categories": ["Fruits"],
+        "name": "Ensalada de Frutas",
+        "description": "Ensalada de frutas frescas para un snack saludable.",
+        "needs_categories": ["Frutas"],
         "max_time_minutes": 10,
         "difficulty": "easy",
         "dietary": ["vegetarian", "vegan", "gluten_free", "dairy_free"],
         "ingredients": [
-            {"name": "Bananas", "category": "Fruits", "quantity": 1, "unit": "units"},
-            {"name": "Red Apples", "category": "Fruits", "quantity": 1, "unit": "units"},
+            {"name": "Plátanos", "category": "Frutas", "quantity": 1, "unit": "units"},
+            {"name": "Manzanas Rojas", "category": "Frutas", "quantity": 1, "unit": "units"},
         ],
     },
     {
-        "name": "Pasta with Tomato Sauce",
-        "description": "Classic comfort food, ready in 15 minutes.",
-        "needs_categories": ["Pasta", "Sauces"],
+        "name": "Pasta con Salsa de Tomate",
+        "description": "Comida clásica reconfortante, lista en 15 minutos.",
+        "needs_categories": ["Pasta", "Salsas"],
         "max_time_minutes": 15,
         "difficulty": "easy",
         "dietary": ["vegetarian", "vegan"],
         "ingredients": [
-            {"name": "Spaghetti", "category": "Pasta", "quantity": 0.2, "unit": "kg"},
-            {"name": "Tomato Sauce", "category": "Sauces", "quantity": 0.15, "unit": "lt"},
+            {"name": "Espagueti", "category": "Pasta", "quantity": 0.2, "unit": "kg"},
+            {"name": "Salsa de Tomate", "category": "Salsas", "quantity": 0.15, "unit": "lt"},
         ],
     },
     {
-        "name": "Chicken and Rice",
-        "description": "Simple one-pan chicken with rice.",
-        "needs_categories": ["Poultry", "Grains"],
+        "name": "Pollo con Arroz",
+        "description": "Pollo con arroz en una sola sartén.",
+        "needs_categories": ["Aves", "Granos"],
         "max_time_minutes": 35,
         "difficulty": "medium",
         "dietary": ["gluten_free", "dairy_free", "high_protein"],
         "ingredients": [
-            {"name": "Chicken Breast", "category": "Poultry", "quantity": 0.2, "unit": "kg"},
-            {"name": "White Rice", "category": "Grains", "quantity": 0.1, "unit": "kg"},
+            {"name": "Pechuga de Pollo", "category": "Aves", "quantity": 0.2, "unit": "kg"},
+            {"name": "Arroz Blanco", "category": "Granos", "quantity": 0.1, "unit": "kg"},
         ],
     },
     {
-        "name": "French Toast",
-        "description": "Sweet breakfast with eggs and bread.",
-        "needs_categories": ["Poultry", "Bread"],
+        "name": "Tostadas Francesas",
+        "description": "Desayuno dulce con huevos y pan.",
+        "needs_categories": ["Aves", "Pan"],
         "max_time_minutes": 15,
         "difficulty": "easy",
         "dietary": ["vegetarian"],
         "ingredients": [
-            {"name": "Free-Range Eggs", "category": "Poultry", "quantity": 2, "unit": "units"},
-            {"name": "Whole Wheat Bread", "category": "Bread", "quantity": 2, "unit": "units"},
+            {"name": "Huevos de Campo", "category": "Aves", "quantity": 2, "unit": "units"},
+            {"name": "Pan Integral", "category": "Pan", "quantity": 2, "unit": "units"},
         ],
     },
     {
-        "name": "Veggie Omelet",
-        "description": "Quick omelet with vegetables.",
-        "needs_categories": ["Poultry", "Vegetables"],
+        "name": "Omelette de Verduras",
+        "description": "Omelette rápido con verduras.",
+        "needs_categories": ["Aves", "Verduras"],
         "max_time_minutes": 12,
         "difficulty": "easy",
         "dietary": ["vegetarian", "gluten_free", "high_protein", "low_carb"],
         "ingredients": [
-            {"name": "Free-Range Eggs", "category": "Poultry", "quantity": 3, "unit": "units"},
-            {"name": "Fresh Spinach", "category": "Vegetables", "quantity": 0.1, "unit": "kg"},
+            {"name": "Huevos de Campo", "category": "Aves", "quantity": 3, "unit": "units"},
+            {"name": "Espinaca Fresca", "category": "Verduras", "quantity": 0.1, "unit": "kg"},
         ],
     },
     {
-        "name": "Cheese Toast",
-        "description": "Toasted bread with melted cheese.",
-        "needs_categories": ["Dairy", "Bread"],
+        "name": "Tostada con Queso",
+        "description": "Pan tostado con queso derretido.",
+        "needs_categories": ["Lácteos", "Pan"],
         "max_time_minutes": 8,
         "difficulty": "easy",
         "dietary": ["vegetarian"],
         "ingredients": [
-            {"name": "Cheddar Cheese", "category": "Dairy", "quantity": 0.05, "unit": "kg"},
-            {"name": "Whole Wheat Bread", "category": "Bread", "quantity": 2, "unit": "units"},
+            {"name": "Queso Cheddar", "category": "Lácteos", "quantity": 0.05, "unit": "kg"},
+            {"name": "Pan Integral", "category": "Pan", "quantity": 2, "unit": "units"},
         ],
     },
     {
-        "name": "Veggie Rice Bowl",
-        "description": "Rice bowl loaded with fresh vegetables.",
-        "needs_categories": ["Grains", "Vegetables"],
+        "name": "Bowl de Arroz con Verduras",
+        "description": "Bowl de arroz cargado con verduras frescas.",
+        "needs_categories": ["Granos", "Verduras"],
         "max_time_minutes": 25,
         "difficulty": "easy",
         "dietary": ["vegetarian", "vegan", "gluten_free", "dairy_free"],
         "ingredients": [
-            {"name": "White Rice", "category": "Grains", "quantity": 0.15, "unit": "kg"},
-            {"name": "Fresh Spinach", "category": "Vegetables", "quantity": 0.15, "unit": "kg"},
-            {"name": "Red Apples", "category": "Fruits", "quantity": 1, "unit": "units"},
+            {"name": "Arroz Blanco", "category": "Granos", "quantity": 0.15, "unit": "kg"},
+            {"name": "Espinaca Fresca", "category": "Verduras", "quantity": 0.15, "unit": "kg"},
+            {"name": "Manzanas Rojas", "category": "Frutas", "quantity": 1, "unit": "units"},
         ],
     },
     {
-        "name": "Beef Tacos",
-        "description": "Tacos stuffed with seasoned beef and fresh salsa.",
-        "needs_categories": ["Meat", "Vegetables", "Bakery"],
+        "name": "Tacos de Res",
+        "description": "Tacos rellenos de res sazonada y salsa fresca.",
+        "needs_categories": ["Carne", "Verduras", "Panadería"],
         "max_time_minutes": 30,
         "difficulty": "medium",
         "dietary": ["dairy_free"],
         "ingredients": [
-            {"name": "Beef Steak", "category": "Meat", "quantity": 0.2, "unit": "kg"},
-            {"name": "Fresh Spinach", "category": "Vegetables", "quantity": 0.1, "unit": "kg"},
-            {"name": "Whole Wheat Bread", "category": "Bakery", "quantity": 2, "unit": "units"},
+            {"name": "Bistec de Res", "category": "Carne", "quantity": 0.2, "unit": "kg"},
+            {"name": "Espinaca Fresca", "category": "Verduras", "quantity": 0.1, "unit": "kg"},
+            {"name": "Pan Integral", "category": "Panadería", "quantity": 2, "unit": "units"},
         ],
     },
 ]
@@ -491,13 +510,25 @@ class RecipeService:
     # ----- Gemini -----
 
     def _generate_with_gemini(self, have_index: dict, current_user: dict) -> list[dict] | None:
+        """Ask Gemini for personalized recipe suggestions.
+
+        The call is gated by `gemini_throttle` (process-wide):
+          * cache hit -> instant return (no network)
+          * cooldown (after a 429) -> returns None so the caller falls back
+          * rate-limit (4s between calls) -> same
+          * 429 during the call -> enters exponential cooldown (1m, 2m, 4m, ...)
+            so we stop hammering the API while the quota recovers.
+        """
         api_key = settings.gemini_api_key
         if not api_key:
             return None
 
-        product_names = list(have_index["by_name"].keys())[:30]
-        prompt = self._build_gemini_prompt(product_names)
-        try:
+        # Stable cache key: same inventory snapshot -> same recipes.
+        product_names = sorted(have_index["by_name"].keys())[:30]
+        cache_key = gemini_throttle.make_key("recipes.suggest", product_names)
+
+        def _do_call() -> list[dict] | None:
+            prompt = self._build_gemini_prompt(product_names)
             with httpx.Client(timeout=GEMINI_TIMEOUT_SECONDS) as client:
                 resp = client.post(
                     f"{GEMINI_URL}?key={api_key}",
@@ -510,14 +541,17 @@ class RecipeService:
                         },
                     },
                 )
+                if resp.status_code == 429:
+                    # Routed to the throttler -> triggers exponential cooldown
+                    raise _GeminiRateLimited(f"HTTP 429: {resp.text[:200]}")
                 resp.raise_for_status()
                 data = resp.json()
             text = data["candidates"][0]["content"]["parts"][0]["text"]
-        except Exception as e:
-            logger.warning("gemini call failed: %s", e)
-            return None
+            return self._parse_gemini_response(text)
 
-        return self._parse_gemini_response(text)
+        return gemini_throttle.acquire_and_call(
+            cache_key, "recipe_service._generate_with_gemini", _do_call
+        )
 
     @staticmethod
     def _build_gemini_prompt(product_names: list[str]) -> str:
@@ -676,8 +710,9 @@ class RecipeService:
         need: list[RecipeIngredient],
     ) -> Recipe:
         priority = round(waste_rescue * 0.6 + match_pct * 0.4, 2)
+        source = recipe.get("source", "fallback")
         return Recipe(
-            id=str(uuid.uuid4()),
+            id=_stable_recipe_id(recipe.get("name", ""), source),
             name=recipe.get("name", "Untitled"),
             description=recipe.get("description"),
             match_pct=match_pct,
@@ -685,7 +720,7 @@ class RecipeService:
             priority_score=priority,
             have_ingredients=have,
             need_ingredients=need,
-            source=recipe.get("source", "fallback"),
+            source=source,
             max_time_minutes=recipe.get("max_time_minutes"),
             difficulty=recipe.get("difficulty"),
             dietary=list(recipe.get("dietary", [])),

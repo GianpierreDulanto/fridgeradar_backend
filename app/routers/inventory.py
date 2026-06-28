@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, Query
 from app.schemas.inventory import (
     InventoryAction,
     InventoryCreate,
+    InventoryListResponse,
     InventoryResponse,
     InventoryUpdate,
 )
@@ -15,7 +16,7 @@ from app.services.auth_service import get_current_user
 router = APIRouter(prefix="/api/inventory-items", tags=["inventory"])
 
 
-@router.get("")
+@router.get("", response_model=InventoryListResponse)
 def list_items(
     household_id: str = Query(...),
     zone_id: str | None = Query(None),
@@ -41,7 +42,7 @@ async def create_item(
     current_user: dict = Depends(get_current_user),
     service: InventoryService = Depends(get_inventory_service),
 ):
-    return await service.create(
+    return service.create(
         household_id=body.household_id,
         product_name=body.product_name,
         product_category=body.product_category,

@@ -170,21 +170,6 @@ uvicorn app.main:app --reload --port 8000
 
 Al arrancar, `app.workers.scheduler` levanta APScheduler en background y escanea el inventario cada `SCAN_INTERVAL_MINUTES` (default 60) para generar alertas de caducidad. Para desactivarlo en dev: `ENABLE_SCHEDULER=false` en `.env`.
 
-### 2.6 Imagenes de productos (opcional)
-
-El seed crea los 49 productos con `image_url=NULL` para que el seed sea rapido. Si quieres poblar las imagenes desde Open Food Facts (util para ver las cards con foto), hay 2 caminos:
-
-```powershell
-# A) Script dedicado (recomendado, idempotente, solo actualiza los NULL):
-python scripts/fetch_product_images.py            # solo Casa de Alice
-python scripts/fetch_product_images.py --all      # todos los households
-
-# B) Forzar dentro del propio seed:
-FETCH_IMAGES=1 python scripts/reset_db.py
-```
-
-El script serializa las llamadas (~3s por producto, ~2.5 min para 49 productos) porque Open Food Facts rate-limita IPs compartidas. Si un producto devuelve 503/timeout, queda con `image_url=NULL` y sigue con el siguiente.
-
 ### 2.6 Tests
 
 ```powershell

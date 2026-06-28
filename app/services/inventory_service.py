@@ -7,6 +7,7 @@ from app.core.database import get_db
 from app.repositories.inventory_repository import InventoryRepository
 from app.repositories.household_repository import HouseholdRepository
 from app.repositories.zone_repository import ZoneRepository
+from app.schemas.inventory import InventoryListResponse, InventoryResponse
 from app.services.activity_service import ActivityService
 from app.services.auth_service import get_current_user
 from app.services.expiry_service import (
@@ -15,7 +16,6 @@ from app.services.expiry_service import (
     compute_low_stock_priority,
     resolve_low_stock_threshold,
 )
-from app.services.food_api import fetch_product_image
 
 
 class InventoryService:
@@ -33,7 +33,7 @@ class InventoryService:
         limit: int,
         offset: int,
         current_user: dict,
-    ) -> dict:
+    ) -> InventoryListResponse:
         self._check_membership(household_id, current_user["id"])
         items, total = self.repo.list_paginated(
             household_id=household_id,
@@ -42,21 +42,21 @@ class InventoryService:
             limit=limit,
             offset=offset,
         )
-        return {
-            "items": [self._to_response(item) for item in items],
-            "total": total,
-            "limit": limit,
-            "offset": offset,
-        }
+        return InventoryListResponse(
+            items=[self._to_response(item) for item in items],
+            total=total,
+            limit=limit,
+            offset=offset,
+        )
 
-    def get(self, item_id: str, current_user: dict) -> dict:
+    def get(self, item_id: str, current_user: dict) -> InventoryResponse:
         item = self.repo.get_by_id(item_id)
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")
         self._check_membership(str(item.household_id), current_user["id"])
         return self._to_response(item)
 
-    async def create(
+    def create(
         self,
         household_id: str,
         product_name: str,
@@ -68,7 +68,7 @@ class InventoryService:
         expiry_date: str | None,
         current_user: dict,
         low_stock_threshold: float | None = None,
-    ) -> dict:
+    ) -> InventoryResponse:
         self._check_membership(household_id, current_user["id"])
         zone = self.zone_repo.get_by_id(zone_id)
         if not zone:
@@ -86,12 +86,6 @@ class InventoryService:
             )
         elif low_stock_threshold is not None:
             product = self.repo.update_product_threshold(product, low_stock_threshold)
-
-        if not product.image_url:
-            image_url = await fetch_product_image(product_name)
-            if image_url:
-                product.image_url = image_url
-                self.repo.db.commit()
 
         item = self.repo.create(
             household_id=household_id,
@@ -115,7 +109,7 @@ class InventoryService:
 
         return self._to_response(item)
 
-    def update(self, item_id: str, updates: dict, current_user: dict) -> dict:
+    def update(self, item_id: str, updates: dict, current_user: dict) -> InventoryResponse:
         item = self.repo.get_by_id(item_id)
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")
@@ -155,7 +149,7 @@ class InventoryService:
 
         return self._to_response(item)
 
-    def consume(self, item_id: str, quantity: float, current_user: dict) -> dict:
+    def consume(self, item_id: str, quantity: float, current_user: dict) -> InventoryResponse:
         item = self.repo.get_by_id(item_id)
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")
@@ -188,7 +182,7 @@ class InventoryService:
 
         return self._to_response(item)
 
-    def discard(self, item_id: str, current_user: dict) -> dict:
+    def discard(self, item_id: str, current_user: dict) -> InventoryResponse:
         item = self.repo.get_by_id(item_id)
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")
@@ -207,7 +201,7 @@ class InventoryService:
 
         return self._to_response(item)
 
-    def restock(self, item_id: str, quantity: float, current_user: dict) -> dict:
+    def restock(self, item_id: str, quantity: float, current_user: dict) -> InventoryResponse:
         item = self.repo.get_by_id(item_id)
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")
@@ -265,7 +259,7 @@ class InventoryService:
             return value
         return str(value)
 
-    def _to_response(self, item) -> dict:
+    def _to_response(self, item) -> InventoryResponse:
         zone = item.zone
         refrigerator = zone.refrigerator if zone else None
         product = item.product
@@ -274,33 +268,33 @@ class InventoryService:
         is_low_stock = quantity < threshold
         low_stock_priority = compute_low_stock_priority(quantity, threshold) if is_low_stock else 0
         expiry_info = compute_expiry(item.expiry_date)
-        expiry_priority = expiry_info["priority_score"]
-        return {
-            "id": str(item.id),
-            "household_id": str(item.household_id),
-            "product_id": str(item.product_id),
-            "product_name": product.name if product else "",
-            "product_category": product.category if product else None,
-            "zone_id": str(item.zone_id),
-            "zone_name": zone.name if zone else "",
-            "zone_type": zone.type if zone else "",
-            "refrigerator_id": str(refrigerator.id) if refrigerator else None,
-            "refrigerator_name": refrigerator.name if refrigerator else None,
-            "refrigerator_type": refrigerator.type if refrigerator else None,
-            "quantity": quantity,
-            "unit": item.unit,
-            "low_stock_threshold": threshold,
-            "is_low_stock": is_low_stock,
-            "image_url": product.image_url if product else None,
-            "purchase_date": item.purchase_date.isoformat() if item.purchase_date else None,
-            "expiry_date": item.expiry_date.isoformat() if item.expiry_date else None,
-            "opened_date": item.opened_date.isoformat() if item.opened_date else None,
-            "expiry_status": expiry_info["status"],
-            "days_left": expiry_info["days_left"],
-            "priority_score": max(expiry_priority, low_stock_priority),
-            "status": item.status,
-            "created_at": item.created_at.isoformat(),
-        }
+        expiry_priority = float(expiry_info["priority_score"])
+        return InventoryResponse(
+            id=str(item.id),
+            household_id=str(item.household_id),
+            product_id=str(item.product_id),
+            product_name=product.name if product else "",
+            product_category=product.category if product else None,
+            image_url=product.image_url if product else None,
+            zone_id=str(item.zone_id),
+            zone_name=zone.name if zone else "",
+            zone_type=zone.type if zone else "",
+            refrigerator_id=str(refrigerator.id) if refrigerator else None,
+            refrigerator_name=refrigerator.name if refrigerator else None,
+            refrigerator_type=refrigerator.type if refrigerator else None,
+            quantity=quantity,
+            unit=item.unit,
+            low_stock_threshold=threshold,
+            is_low_stock=is_low_stock,
+            expiry_status=expiry_info["status"],
+            days_left=expiry_info["days_left"],
+            priority_score=float(max(expiry_priority, low_stock_priority)),
+            purchase_date=item.purchase_date,
+            expiry_date=item.expiry_date,
+            opened_date=item.opened_date,
+            status=item.status,
+            created_at=item.created_at,
+        )
 
 
 def get_inventory_service(db: Session = Depends(get_db)) -> InventoryService:

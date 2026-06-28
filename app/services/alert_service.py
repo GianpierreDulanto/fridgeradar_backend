@@ -10,6 +10,7 @@ from app.models import Household
 from app.repositories.alert_repository import AlertRepository
 from app.repositories.household_repository import HouseholdRepository
 from app.repositories.inventory_repository import InventoryRepository
+from app.schemas.alert import AlertResponse, AlertScanResult
 from app.services.auth_service import get_current_user
 from app.services.expiry_service import (
     DEFAULT_LOW_STOCK_THRESHOLD,
@@ -30,12 +31,12 @@ class AlertService:
         household_id: str,
         severity: str | None,
         current_user: dict,
-    ) -> list[dict]:
+    ) -> list[AlertResponse]:
         self._check_membership(household_id, current_user["id"])
         alerts = self.repo.list_by_household(household_id, severity)
         return [self._to_response(alert) for alert in alerts]
 
-    def mark_read(self, alert_id: str, current_user: dict) -> dict:
+    def mark_read(self, alert_id: str, current_user: dict) -> AlertResponse:
         alert = self.repo.get_by_id(alert_id)
         if not alert:
             raise HTTPException(status_code=404, detail="Alert not found")
@@ -48,7 +49,7 @@ class AlertService:
         alert_id: str,
         duration_hours: int,
         current_user: dict,
-    ) -> dict:
+    ) -> AlertResponse:
         alert = self.repo.get_by_id(alert_id)
         if not alert:
             raise HTTPException(status_code=404, detail="Alert not found")
@@ -60,7 +61,7 @@ class AlertService:
         self,
         household_id: str | None = None,
         current_user: dict | None = None,
-    ) -> dict:
+    ) -> AlertScanResult:
         """Scan and generate alerts. Used by both the manual run-preview endpoint
         and the cron scheduler. When called by an HTTP endpoint, pass current_user
         so we can validate membership. When called by the scheduler (current_user
@@ -90,7 +91,7 @@ class AlertService:
         total_active = (
             self.repo.get_active_count(household_id) if household_id else None
         )
-        return {"created": total_created, "total_active": total_active}
+        return AlertScanResult(created=total_created, total_active=total_active or 0)
 
     def _scan_one_household(self, household, today: date) -> int:
         """Scan one household's inventory and return count of alerts created."""
@@ -195,27 +196,27 @@ class AlertService:
         if not any(str(m.user_id) == user_id for m, _ in members):
             raise HTTPException(status_code=403, detail="Not a member of this household")
 
-    def _to_response(self, alert) -> dict:
+    def _to_response(self, alert) -> AlertResponse:
         product_name = None
         if alert.inventory_item_id:
             item = self.inventory_repo.get_by_id(str(alert.inventory_item_id))
             if item and item.product:
                 product_name = item.product.name
-        return {
-            "id": str(alert.id),
-            "household_id": str(alert.household_id),
-            "inventory_item_id": str(alert.inventory_item_id) if alert.inventory_item_id else None,
-            "type": alert.type,
-            "severity": alert.severity,
-            "title": alert.title,
-            "message": alert.message,
-            "due_at": alert.due_at.isoformat() if alert.due_at else None,
-            "read_at": alert.read_at.isoformat() if alert.read_at else None,
-            "resolved_at": alert.resolved_at.isoformat() if alert.resolved_at else None,
-            "priority_score": float(alert.priority_score) if alert.priority_score is not None else 0,
-            "created_at": alert.created_at.isoformat(),
-            "product_name": product_name,
-        }
+        return AlertResponse(
+            id=str(alert.id),
+            household_id=str(alert.household_id),
+            inventory_item_id=str(alert.inventory_item_id) if alert.inventory_item_id else None,
+            type=alert.type,
+            severity=alert.severity,
+            title=alert.title,
+            message=alert.message,
+            due_at=alert.due_at,
+            read_at=alert.read_at,
+            resolved_at=alert.resolved_at,
+            priority_score=float(alert.priority_score) if alert.priority_score is not None else 0.0,
+            created_at=alert.created_at,
+            product_name=product_name,
+        )
 
 
 def get_alert_service(db: Session = Depends(get_db)) -> AlertService:

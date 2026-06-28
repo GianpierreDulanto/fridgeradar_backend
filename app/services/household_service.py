@@ -1,9 +1,10 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.repositories.household_repository import HouseholdRepository
 from app.repositories.user_repository import UserRepository
+from app.schemas.household import HouseholdResponse, MemberResponse
 from app.services.auth_service import get_current_user
 
 
@@ -19,7 +20,7 @@ class HouseholdService:
         current_user: dict,
         create_freezer: bool = True,
         create_pantry: bool = False,
-    ) -> dict:
+    ) -> HouseholdResponse:
         household = self.repo.create(name=name, timezone=timezone, owner_user_id=current_user["id"])
         self.repo.add_member(household_id=str(household.id), user_id=current_user["id"], role="owner")
 
@@ -67,14 +68,14 @@ class HouseholdService:
 
         return self._to_response(household)
 
-    def get_by_id(self, household_id: str, current_user: dict) -> dict:
+    def get_by_id(self, household_id: str, current_user: dict) -> HouseholdResponse:
         self._check_membership(household_id, current_user["id"])
         household = self.repo.get_by_id(household_id)
         if not household:
             raise HTTPException(status_code=404, detail="Household not found")
         return self._to_response(household)
 
-    def update(self, household_id: str, name: str | None, timezone: str | None, current_user: dict) -> dict:
+    def update(self, household_id: str, name: str | None, timezone: str | None, current_user: dict) -> HouseholdResponse:
         self._check_owner(household_id, current_user["id"])
         household = self.repo.get_by_id(household_id)
         if not household:
@@ -82,11 +83,11 @@ class HouseholdService:
         household = self.repo.update(household, name, timezone)
         return self._to_response(household)
 
-    def list_user_households(self, current_user: dict) -> list[dict]:
+    def list_user_households(self, current_user: dict) -> list[HouseholdResponse]:
         households = self.repo.get_by_user_id(current_user["id"])
         return [self._to_response(h) for h in households]
 
-    def invite_member(self, household_id: str, email: str, current_user: dict) -> dict:
+    def invite_member(self, household_id: str, email: str, current_user: dict) -> MemberResponse:
         self._check_admin(household_id, current_user["id"])
         user = self.user_repo.get_by_email(email)
         if not user:
@@ -95,8 +96,20 @@ class HouseholdService:
         for m, _ in existing_members:
             if str(m.user_id) == str(user.id):
                 raise HTTPException(status_code=409, detail="User already a member")
-        member = self.repo.add_member(household_id=household_id, user_id=str(user.id), invited_by=current_user["id"], status="pending")
-        return {"id": str(member.id), "user_id": str(user.id), "email": user.email, "full_name": user.full_name, "role": member.role, "status": member.status}
+        member = self.repo.add_member(
+            household_id=household_id,
+            user_id=str(user.id),
+            invited_by=current_user["id"],
+            status="pending",
+        )
+        return MemberResponse(
+            id=str(member.id),
+            user_id=str(user.id),
+            email=user.email,
+            full_name=user.full_name,
+            role=member.role,
+            created_at=member.created_at,
+        )
 
     def remove_member(self, household_id: str, member_id: str, current_user: dict) -> dict:
         self._check_owner(household_id, current_user["id"])
@@ -114,20 +127,20 @@ class HouseholdService:
         self.repo.delete_member(member_id)
         return {"message": "Member removed", "user_id": str(user.id), "full_name": user.full_name}
 
-    def get_members(self, household_id: str, current_user: dict) -> list[dict]:
+    def get_members(self, household_id: str, current_user: dict) -> list[MemberResponse]:
         self._check_membership(household_id, current_user["id"])
         members = self.repo.get_members(household_id)
-        result = []
-        for member, user in members:
-            result.append({
-                "id": str(member.id),
-                "user_id": str(user.id),
-                "email": user.email,
-                "full_name": user.full_name,
-                "role": member.role,
-                "created_at": member.created_at.isoformat(),
-            })
-        return result
+        return [
+            MemberResponse(
+                id=str(member.id),
+                user_id=str(user.id),
+                email=user.email,
+                full_name=user.full_name,
+                role=member.role,
+                created_at=member.created_at,
+            )
+            for member, user in members
+        ]
 
     def _check_membership(self, household_id: str, user_id: str) -> None:
         members = self.repo.get_members(household_id)
@@ -146,14 +159,14 @@ class HouseholdService:
                 return
         raise HTTPException(status_code=403, detail="Admin or owner role required")
 
-    def _to_response(self, household) -> dict:
-        return {
-            "id": str(household.id),
-            "name": household.name,
-            "timezone": household.timezone,
-            "owner_user_id": str(household.owner_user_id),
-            "created_at": household.created_at.isoformat(),
-        }
+    def _to_response(self, household) -> HouseholdResponse:
+        return HouseholdResponse(
+            id=str(household.id),
+            name=household.name,
+            timezone=household.timezone,
+            owner_user_id=str(household.owner_user_id),
+            created_at=household.created_at,
+        )
 
 
 def get_household_service(db: Session = Depends(get_db)) -> HouseholdService:

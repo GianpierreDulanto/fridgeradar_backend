@@ -64,3 +64,11 @@ class InventoryResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class InventoryListResponse(BaseModel):
+    """Paginated wrapper for GET /api/inventory-items."""
+    items: list[InventoryResponse]
+    total: int
+    limit: int
+    offset: int

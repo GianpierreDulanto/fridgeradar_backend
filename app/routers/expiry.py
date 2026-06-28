@@ -74,7 +74,7 @@ def _to_expiry_item(item: InventoryItem) -> ExpiryItem:
         expiry_date=item.expiry_date,
         days_left=expiry_info["days_left"],
         expiry_status=expiry_info["status"],
-        priority_score=max(expiry_info["priority_score"], low_stock_priority),
+        priority_score=float(max(expiry_info["priority_score"], low_stock_priority)),
         is_low_stock=is_low_stock,
     )
 

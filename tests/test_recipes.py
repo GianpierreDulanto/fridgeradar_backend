@@ -39,10 +39,10 @@ def test_suggest_fallback_with_categories_present(client, auth_headers, househol
         h["household_id"],
         h["zone_id"],
         [
-            ("Whole Milk", "Dairy", 5),
-            ("White Rice", "Grains", 30),
-            ("Fresh Spinach", "Vegetables", 2),
-            ("Beef Steak", "Meat", 3),
+            ("Leche Entera",     "Lácteos",   5),
+            ("Arroz Blanco",     "Granos",    30),
+            ("Espinaca Fresca",  "Verduras",  2),
+            ("Bistec de Res",    "Carne",     3),
         ],
     )
     res = client.get(
@@ -67,7 +67,7 @@ def test_suggest_filters_by_max_time(client, auth_headers, household_setup):
         auth_headers,
         h["household_id"],
         h["zone_id"],
-        [("Whole Milk", "Dairy", 5), ("White Rice", "Grains", 30)],
+        [("Leche Entera", "Lácteos", 5), ("Arroz Blanco", "Granos", 30)],
     )
     res = client.get(
         f"/api/recipes/suggest?household_id={h['household_id']}&max_time=10",
@@ -89,7 +89,7 @@ def test_suggest_filters_by_difficulty(client, auth_headers, household_setup):
         auth_headers,
         h["household_id"],
         h["zone_id"],
-        [("Whole Milk", "Dairy", 5), ("White Rice", "Grains", 30)],
+        [("Leche Entera", "Lácteos", 5), ("Arroz Blanco", "Granos", 30)],
     )
     res = client.get(
         f"/api/recipes/suggest?household_id={h['household_id']}&difficulty=easy",
@@ -136,10 +136,10 @@ def test_suggest_pagination_limit_and_offset(client, auth_headers, household_set
         h["household_id"],
         h["zone_id"],
         [
-            ("Whole Milk", "Dairy", 5),
-            ("White Rice", "Grains", 30),
-            ("Fresh Spinach", "Vegetables", 2),
-            ("Beef Steak", "Meat", 3),
+            ("Leche Entera", "Lácteos", 5),
+            ("Arroz Blanco", "Granos", 30),
+            ("Espinaca Fresca", "Verduras", 2),
+            ("Bistec de Res", "Carne", 3),
             ("Red Apples", "Fruits", 5),
         ],
     )
@@ -168,7 +168,7 @@ def test_daily_returns_a_recipe(client, auth_headers, household_setup):
         auth_headers,
         h["household_id"],
         h["zone_id"],
-        [("Whole Milk", "Dairy", 5), ("White Rice", "Grains", 30)],
+        [("Leche Entera", "Lácteos", 5), ("Arroz Blanco", "Granos", 30)],
     )
     res = client.get(
         f"/api/recipes/daily?household_id={h['household_id']}",
@@ -185,7 +185,7 @@ def test_daily_is_deterministic_for_same_day(client, auth_headers, household_set
         auth_headers,
         h["household_id"],
         h["zone_id"],
-        [("Whole Milk", "Dairy", 5), ("White Rice", "Grains", 30)],
+        [("Leche Entera", "Lácteos", 5), ("Arroz Blanco", "Granos", 30)],
     )
     a = client.get(
         f"/api/recipes/daily?household_id={h['household_id']}",
@@ -200,24 +200,24 @@ def test_daily_is_deterministic_for_same_day(client, auth_headers, household_set
 
 def test_missing_ingredients_for_recipe(client, auth_headers, household_setup):
     h = household_setup
-    # Only have milk — rice bowl requires rice, spinach and apples.
+    # Solo tenemos leche — el bowl de arroz pide arroz, espinaca y manzana.
     _seed_inventory(
         client,
         auth_headers,
         h["household_id"],
         h["zone_id"],
-        [("Whole Milk", "Dairy", 5)],
+        [("Leche Entera", "Lácteos", 5)],
     )
     res = client.get(
-        f"/api/recipes/Veggie%20Rice%20Bowl/missing?household_id={h['household_id']}",
+        f"/api/recipes/Bowl%20de%20Arroz%20con%20Verduras/missing?household_id={h['household_id']}",
         headers=auth_headers,
     )
     assert res.status_code == 200, res.text
     body = res.json()
     names = {i["name"] for i in body}
-    assert "White Rice" in names
-    assert "Fresh Spinach" in names
-    assert "Red Apples" in names
+    assert "Arroz Blanco" in names
+    assert "Espinaca Fresca" in names
+    assert "Manzanas Rojas" in names
 
 
 def test_add_recipe_missing_to_shopping_list(client, auth_headers, household_setup):
@@ -228,25 +228,25 @@ def test_add_recipe_missing_to_shopping_list(client, auth_headers, household_set
         auth_headers,
         h["household_id"],
         h["zone_id"],
-        [("Whole Milk", "Dairy", 5)],
+        [("Leche Entera", "Lácteos", 5)],
     )
     res = client.post(
         "/api/shopping-lists/from-recipe",
         headers=auth_headers,
-        json={"household_id": h["household_id"], "recipe_name": "Veggie Rice Bowl"},
+        json={"household_id": h["household_id"], "recipe_name": "Bowl de Arroz con Verduras"},
     )
     assert res.status_code == 200, res.text
     body = res.json()
-    assert body["recipe_name"] == "Veggie Rice Bowl"
+    assert body["recipe_name"] == "Bowl de Arroz con Verduras"
     assert body["added"] >= 1
     for it in body["items"]:
-        assert it["source"] == "recipe:Veggie Rice Bowl"
+        assert it["source"] == "recipe:Bowl de Arroz con Verduras"
 
     # Calling again should not create duplicates.
     res2 = client.post(
         "/api/shopping-lists/from-recipe",
         headers=auth_headers,
-        json={"household_id": h["household_id"], "recipe_name": "Veggie Rice Bowl"},
+        json={"household_id": h["household_id"], "recipe_name": "Bowl de Arroz con Verduras"},
     )
     assert res2.json()["added"] == 0
     assert res2.json()["skipped"] >= 1
@@ -259,19 +259,19 @@ def test_cook_recipe_deducts_inventory(client, auth_headers, household_setup):
         auth_headers,
         h["household_id"],
         h["zone_id"],
-        [("Whole Milk", "Dairy", 5)],
+        [("Leche Entera", "Lácteos", 5)],
     )
     res = client.post(
         "/api/recipes/cook",
         headers=auth_headers,
         json={
             "household_id": h["household_id"],
-            "recipe_name": "Cereal Bowl",
+            "recipe_name": "Tazón de Cereal",
             "consume_ingredients": [
-                {"name": "Whole Milk", "quantity": 0.25, "unit": "lt", "is_have": True}
+                {"name": "Leche Entera", "quantity": 0.25, "unit": "lt", "is_have": True}
             ],
         },
     )
     assert res.status_code == 200, res.text
     body = res.json()
-    assert body["consumed"][0]["product_name"] == "Whole Milk"
+    assert body["consumed"][0]["product_name"] == "Leche Entera"

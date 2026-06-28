@@ -47,16 +47,34 @@ T = TypeVar("T")
 
 
 class GeminiThrottle:
-    """Per-process gate + TTL cache for Gemini calls."""
+    """Per-process gate + TTL cache for Gemini calls.
 
-    # --- tunables ---
-    MIN_INTERVAL_S: float = 4.0         # > 1/15 RPM; safe margin
-    COOLDOWN_BASE_S: float = 60.0       # first 429 -> 1 min
-    COOLDOWN_MAX_S: float = 3600.0      # never block more than 1h
-    CACHE_TTL_S: float = 300.0          # 5 min for hits
-    CACHE_NEG_TTL_S: float = 30.0       # 30s for "nothing useful" (so we retry soon)
+    Tunables (min interval between calls, cooldown backoff, cache TTLs) are
+    configurable per-instance via __init__, which fall back to the values in
+    `app.core.config.settings` (themselves driven by env vars).
+    """
 
-    def __init__(self) -> None:
+    # --- defaults (overridable per-instance via __init__) ---
+    DEFAULT_MIN_INTERVAL_S: float = 4.0         # > 1/15 RPM; safe margin
+    DEFAULT_COOLDOWN_BASE_S: float = 60.0       # first 429 -> 1 min
+    DEFAULT_COOLDOWN_MAX_S: float = 3600.0      # never block more than 1h
+    DEFAULT_CACHE_TTL_S: float = 300.0          # 5 min for hits
+    DEFAULT_CACHE_NEG_TTL_S: float = 30.0       # 30s for "nothing useful"
+
+    def __init__(
+        self,
+        min_interval_s: float | None = None,
+        cooldown_base_s: float | None = None,
+        cooldown_max_s: float | None = None,
+        cache_ttl_s: float | None = None,
+        cache_neg_ttl_s: float | None = None,
+    ) -> None:
+        from app.core.config import settings
+        self.min_interval_s = min_interval_s if min_interval_s is not None else settings.gemini_min_interval_s
+        self.cooldown_base_s = cooldown_base_s if cooldown_base_s is not None else settings.gemini_cooldown_base_s
+        self.cooldown_max_s = cooldown_max_s if cooldown_max_s is not None else settings.gemini_cooldown_max_s
+        self.cache_ttl_s = cache_ttl_s if cache_ttl_s is not None else settings.gemini_cache_ttl_s
+        self.cache_neg_ttl_s = cache_neg_ttl_s if cache_neg_ttl_s is not None else settings.gemini_cache_neg_ttl_s
         self._lock = threading.Lock()
         self._last_call_ts: float = 0.0
         self._cooldown_until: float = 0.0
@@ -107,7 +125,7 @@ class GeminiThrottle:
     def cache_get(self, key: str) -> tuple[bool, Any]:
         """Return (hit, value). hit=True with value=None means "we asked, got
         nothing useful" -> caller should still treat as a miss and try again
-        after CACHE_NEG_TTL_S."""
+        after self.cache_neg_ttl_s."""
         with self._lock:
             entry = self._cache.get(key)
             if entry is None:
@@ -119,7 +137,7 @@ class GeminiThrottle:
             return True, value
 
     def cache_set(self, key: str, value: Any, *, ttl_s: float | None = None) -> None:
-        ttl = ttl_s if ttl_s is not None else self.CACHE_TTL_S
+        ttl = ttl_s if ttl_s is not None else self.cache_ttl_s
         with self._lock:
             self._cache[key] = (value, time.monotonic() + ttl)
 
@@ -167,15 +185,15 @@ class GeminiThrottle:
 
             # 3. minimum interval
             now = time.monotonic()
-            wait = self.MIN_INTERVAL_S - (now - self._last_call_ts)
+            wait = self.min_interval_s - (now - self._last_call_ts)
             if wait > 0 and self._last_call_ts > 0:
                 self._stats["rate_limited"] += 1
                 logger.info(
                     "[%s] gemini rate-limited (last call %.1fs ago, need %.1fs)",
-                    caller, now - self._last_call_ts, self.MIN_INTERVAL_S,
+                    caller, now - self._last_call_ts, self.min_interval_s,
                 )
                 # cache the skip briefly so we don't keep logging it
-                self._cache[key] = (None, now + min(wait + 1.0, self.CACHE_NEG_TTL_S))
+                self._cache[key] = (None, now + min(wait + 1.0, self.cache_neg_ttl_s))
                 return None
 
             # 4. we're cleared to call. mark BEFORE running so concurrent
@@ -196,19 +214,19 @@ class GeminiThrottle:
                 self._consecutive_429 += 1
                 self._stats["429"] += 1
                 # exponential cooldown: 1m, 2m, 4m, 8m, 16m, ... cap 1h
-                backoff = self.COOLDOWN_BASE_S * (2 ** min(self._consecutive_429 - 1, 5))
-                self._cooldown_until = time.monotonic() + min(backoff, self.COOLDOWN_MAX_S)
+                backoff = self.cooldown_base_s * (2 ** min(self._consecutive_429 - 1, 5))
+                self._cooldown_until = time.monotonic() + min(backoff, self.cooldown_max_s)
                 logger.warning(
                     "[%s] gemini 429 -> cooldown for %.0fs (consecutive=%d, total=%d)",
-                    caller, self.COOLDOWN_MAX_S if backoff > self.COOLDOWN_MAX_S else backoff,
+                    caller, self.cooldown_max_s if backoff > self.cooldown_max_s else backoff,
                     self._consecutive_429, self._stats["429"],
                 )
-            self.cache_set(key, None, ttl_s=self.CACHE_NEG_TTL_S)
+            self.cache_set(key, None, ttl_s=self.cache_neg_ttl_s)
             return None
         except Exception as e:
             with self._lock:
                 self._stats["errors"] += 1
-            self.cache_set(key, None, ttl_s=self.CACHE_NEG_TTL_S)
+            self.cache_set(key, None, ttl_s=self.cache_neg_ttl_s)
             logger.warning("[%s] gemini call error: %s", caller, e)
             return None
 
@@ -216,7 +234,7 @@ class GeminiThrottle:
             self._consecutive_429 = 0
         # success -> cache the value (or a negative marker if empty)
         if result is None:
-            self.cache_set(key, None, ttl_s=self.CACHE_NEG_TTL_S)
+            self.cache_set(key, None, ttl_s=self.cache_neg_ttl_s)
         else:
             self.cache_set(key, result)
         return result

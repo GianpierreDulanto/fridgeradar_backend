@@ -18,15 +18,17 @@ from app.services.gemini_throttle import (
 def throttle(monkeypatch) -> GeminiThrottle:
     """Fresh instance per test so state doesn't leak between cases.
 
-    Tunables are class-level constants, so we override them via monkeypatch
-    before each test and reset automatically.
+    Tunables are now instance attributes (sourced from `app.core.config.settings`
+    or overridable per-instance). We pass small values directly so each test
+    runs fast without touching the real config.
     """
-    monkeypatch.setattr(GeminiThrottle, "MIN_INTERVAL_S", 0.1)
-    monkeypatch.setattr(GeminiThrottle, "COOLDOWN_BASE_S", 0.3)
-    monkeypatch.setattr(GeminiThrottle, "COOLDOWN_MAX_S", 2.0)
-    monkeypatch.setattr(GeminiThrottle, "CACHE_TTL_S", 0.5)
-    monkeypatch.setattr(GeminiThrottle, "CACHE_NEG_TTL_S", 0.2)
-    return GeminiThrottle()
+    return GeminiThrottle(
+        min_interval_s=0.1,
+        cooldown_base_s=0.3,
+        cooldown_max_s=2.0,
+        cache_ttl_s=0.5,
+        cache_neg_ttl_s=0.2,
+    )
 
 
 def test_initial_stats_are_zero(throttle: GeminiThrottle):

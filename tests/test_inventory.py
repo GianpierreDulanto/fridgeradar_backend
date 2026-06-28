@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.models import InventoryItem, Product
 
 
-def _create_product(db_session: Session, household_id: str, zone_id: str, *, name: str = "Whole Milk", category: str = "Dairy") -> str:
+def _create_product(db_session: Session, household_id: str, zone_id: str, *, name: str = "Leche Entera", category: str = "Lácteos") -> str:
     p = Product(household_id=household_id, name=name, category=category, default_unit="lt")
     db_session.add(p)
     db_session.flush()
@@ -22,7 +22,7 @@ def test_create_inventory_item_happy_path(client, auth_headers, household_setup,
         headers=auth_headers,
         json={
             "household_id": h["household_id"],
-            "product_name": "Whole Milk",
+            "product_name": "Leche Entera",
             "product_category": "Dairy",
             "zone_id": h["zone_id"],
             "quantity": 2,
@@ -33,7 +33,7 @@ def test_create_inventory_item_happy_path(client, auth_headers, household_setup,
     )
     assert res.status_code == 200, res.text
     body = res.json()
-    assert body["product_name"] == "Whole Milk"
+    assert body["product_name"] == "Leche Entera"
     assert body["expiry_status"] == "attention"
     assert body["days_left"] == 5
 

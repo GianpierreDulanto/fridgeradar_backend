@@ -58,11 +58,13 @@ from app.services.expiry_service import (
 
 logger = logging.getLogger(__name__)
 
-GEMINI_URL = (
-    "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-2.0-flash:generateContent"
-)
 GEMINI_TIMEOUT_SECONDS = 15
+
+
+def _gemini_url(model: str) -> str:
+    return (
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    )
 
 
 def _stable_recipe_id(name: str, source: str = "fallback") -> str:
@@ -518,40 +520,79 @@ class RecipeService:
           * rate-limit (4s between calls) -> same
           * 429 during the call -> enters exponential cooldown (1m, 2m, 4m, ...)
             so we stop hammering the API while the quota recovers.
+          * 4xx (e.g. 422: model not available, bad request format) -> logs the
+            full response body once and tries the configured fallback model
+            once before giving up. No cooldown (a bad-request error doesn't
+            rate-limit future calls).
         """
         api_key = settings.gemini_api_key
         if not api_key:
             return None
 
-        # Stable cache key: same inventory snapshot -> same recipes.
+        # Stable cache key: same inventory snapshot -> same recipes. The model
+        # is part of the key so swapping models in dev doesn't return stale
+        # results from the previous model.
         product_names = sorted(have_index["by_name"].keys())[:30]
-        cache_key = gemini_throttle.make_key("recipes.suggest", product_names)
-
-        def _do_call() -> list[dict] | None:
-            prompt = self._build_gemini_prompt(product_names)
-            with httpx.Client(timeout=GEMINI_TIMEOUT_SECONDS) as client:
-                resp = client.post(
-                    f"{GEMINI_URL}?key={api_key}",
-                    json={
-                        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-                        "generationConfig": {
-                            "temperature": 0.7,
-                            "maxOutputTokens": 1024,
-                            "responseMimeType": "application/json",
-                        },
-                    },
-                )
-                if resp.status_code == 429:
-                    # Routed to the throttler -> triggers exponential cooldown
-                    raise _GeminiRateLimited(f"HTTP 429: {resp.text[:200]}")
-                resp.raise_for_status()
-                data = resp.json()
-            text = data["candidates"][0]["content"]["parts"][0]["text"]
-            return self._parse_gemini_response(text)
-
-        return gemini_throttle.acquire_and_call(
-            cache_key, "recipe_service._generate_with_gemini", _do_call
+        cache_key = gemini_throttle.make_key(
+            "recipes.suggest", settings.gemini_model, product_names
         )
+
+        models_to_try = [settings.gemini_model]
+        if settings.gemini_fallback_model and settings.gemini_fallback_model != settings.gemini_model:
+            models_to_try.append(settings.gemini_fallback_model)
+
+        for model in models_to_try:
+            payload = {
+                "contents": [{"role": "user", "parts": [{"text": self._build_gemini_prompt(product_names)}]}],
+                "generationConfig": {
+                    "temperature": 0.7,
+                    "maxOutputTokens": 1024,
+                    "responseMimeType": "application/json",
+                },
+            }
+
+            # Bind `model` and `payload` as default args to avoid the
+            # late-binding closure trap. Each loop iteration creates a new
+            # function with its own bound values.
+            def _do_call(model=model, payload=payload) -> list[dict] | None:
+                with httpx.Client(timeout=GEMINI_TIMEOUT_SECONDS) as client:
+                    resp = client.post(
+                        f"{_gemini_url(model)}?key={api_key}",
+                        json=payload,
+                    )
+                    if resp.status_code == 429:
+                        raise _GeminiRateLimited(f"HTTP 429: {resp.text[:200]}")
+                    if resp.status_code >= 400:
+                        # Log the FULL response body so we can see exactly
+                        # what Gemini is complaining about (model not found,
+                        # bad format, quota issue, etc.).
+                        logger.warning(
+                            "gemini %s returned %d for model=%s: %s",
+                            _gemini_url(model), resp.status_code, model,
+                            resp.text[:500],
+                        )
+                        resp.raise_for_status()
+                    data = resp.json()
+                text = data["candidates"][0]["content"]["parts"][0]["text"]
+                return self._parse_gemini_response(text)
+
+            result = gemini_throttle.acquire_and_call(
+                cache_key,
+                f"recipe_service._generate_with_gemini[{model}]",
+                _do_call,
+            )
+            if result is not None:
+                return result
+            # 4xx or parse failure: try the next model.
+            next_idx = models_to_try.index(model) + 1
+            next_model = models_to_try[next_idx] if next_idx < len(models_to_try) else "none"
+            logger.info(
+                "gemini model=%s unavailable or returned no recipes, "
+                "falling back (next: %s)",
+                model, next_model,
+            )
+
+        return None
 
     @staticmethod
     def _build_gemini_prompt(product_names: list[str]) -> str:

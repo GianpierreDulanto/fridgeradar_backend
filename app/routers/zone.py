@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.schemas.zone import ZoneCreate, ZoneUpdate, ZoneResponse
 from app.services.zone_service import ZoneService, get_zone_service
@@ -9,7 +9,7 @@ router = APIRouter(prefix="/api/zones", tags=["zones"])
 
 @router.get("", response_model=list[ZoneResponse])
 def list_zones(
-    household_id: str,
+    household_id: str = Query(...),
     current_user: dict = Depends(get_current_user),
     service: ZoneService = Depends(get_zone_service),
 ):

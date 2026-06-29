@@ -1,10 +1,10 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 
 
 class ZoneCreate(BaseModel):
     household_id: str
-    name: str
+    name: str = Field(min_length=1, max_length=255)
     type: str = "other"
     sort_order: int = 0
 
@@ -21,6 +21,7 @@ class ZoneResponse(BaseModel):
     name: str
     type: str
     sort_order: int
+    refrigerator_id: str | None = None
     created_at: datetime
 
     class Config:

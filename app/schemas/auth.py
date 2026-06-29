@@ -1,10 +1,10 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 
 class RegisterRequest(BaseModel):
     email: EmailStr
-    password: str
-    full_name: str
+    password: str = Field(min_length=8, max_length=128)
+    full_name: str = Field(min_length=1, max_length=255)
 
 
 class LoginRequest(BaseModel):
@@ -14,6 +14,16 @@ class LoginRequest(BaseModel):
 
 class RefreshRequest(BaseModel):
     refresh_token: str
+
+
+class LogoutRequest(BaseModel):
+    """Optional body for POST /api/auth/logout.
+
+    Sending `refresh_token` here ensures BOTH tokens are revoked server-side
+    (RF-AUT-004). The access token is always taken from the Authorization
+    header.
+    """
+    refresh_token: str | None = None
 
 
 class TokenResponse(BaseModel):

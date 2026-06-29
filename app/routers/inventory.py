@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, Query
 from app.schemas.inventory import (
     InventoryAction,
     InventoryCreate,
+    InventoryListResponse,
     InventoryResponse,
     InventoryUpdate,
 )
@@ -15,11 +16,13 @@ from app.services.auth_service import get_current_user
 router = APIRouter(prefix="/api/inventory-items", tags=["inventory"])
 
 
-@router.get("", response_model=list[InventoryResponse])
+@router.get("", response_model=InventoryListResponse)
 def list_items(
     household_id: str = Query(...),
     zone_id: str | None = Query(None),
     status: str | None = Query(None),
+    limit: int = Query(100, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     current_user: dict = Depends(get_current_user),
     service: InventoryService = Depends(get_inventory_service),
 ):
@@ -27,6 +30,8 @@ def list_items(
         household_id=household_id,
         zone_id=zone_id,
         status=status,
+        limit=limit,
+        offset=offset,
         current_user=current_user,
     )
 
@@ -37,7 +42,7 @@ async def create_item(
     current_user: dict = Depends(get_current_user),
     service: InventoryService = Depends(get_inventory_service),
 ):
-    return await service.create(
+    return service.create(
         household_id=body.household_id,
         product_name=body.product_name,
         product_category=body.product_category,
@@ -47,6 +52,7 @@ async def create_item(
         purchase_date=body.purchase_date.isoformat() if body.purchase_date else None,
         expiry_date=body.expiry_date.isoformat() if body.expiry_date else None,
         current_user=current_user,
+        low_stock_threshold=body.low_stock_threshold,
     )
 
 

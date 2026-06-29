@@ -95,6 +95,7 @@ class Product(Base):
     default_unit = Column(String(50), nullable=True)
     image_url = Column(String(500), nullable=True)
     notes = Column(Text, nullable=True)
+    low_stock_threshold = Column(Numeric(10, 2), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
@@ -115,6 +116,7 @@ class InventoryItem(Base):
     expiry_date = Column(Date, nullable=True, index=True)
     opened_date = Column(Date, nullable=True)
     status = Column(Enum("active", "consumed", "discarded", "archived", name="item_status"), nullable=False, default="active")
+    priority_score = Column(Numeric(6, 2), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
@@ -136,6 +138,7 @@ class Alert(Base):
     due_at = Column(DateTime(timezone=True), nullable=True)
     read_at = Column(DateTime(timezone=True), nullable=True)
     resolved_at = Column(DateTime(timezone=True), nullable=True)
+    priority_score = Column(Numeric(6, 2), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     inventory_item = relationship("InventoryItem", back_populates="alerts")
@@ -166,3 +169,22 @@ class ActivityLog(Base):
     action = Column(String(100), nullable=False)
     extra_data = Column("metadata", JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    actor = relationship("User", foreign_keys=[actor_user_id])
+
+
+class TokenBlacklist(Base):
+    """Server-side JWT revocation list (RF-AUT-004).
+
+    Each row is a revoked JWT identified by its `jti` (UUID minted at token
+    creation). `expires_at` mirrors the JWT's `exp` claim so the row can be
+    safely dropped once the token would have expired anyway. All read queries
+    filter on `expires_at > now()` so old rows never match a live check.
+    """
+    __tablename__ = "token_blacklist"
+
+    jti = Column(UUID(as_uuid=True), primary_key=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    revoked_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    reason = Column(String(50), nullable=True)  # "logout", "admin_revoke", etc.

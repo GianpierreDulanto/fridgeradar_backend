@@ -1,12 +1,10 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.repositories.activity_repository import ActivityRepository
 from app.repositories.household_repository import HouseholdRepository
 from app.services.auth_service import get_current_user
-
-from app.models import User
 
 
 class ActivityService:
@@ -19,16 +17,11 @@ class ActivityService:
         entries = self.repo.list_by_household(household_id, limit)
         result = []
         for entry in entries:
-            actor = (
-                self.household_repo.db.query(User)
-                .filter(User.id == entry.actor_user_id)
-                .first()
-            )
             result.append({
                 "id": str(entry.id),
                 "household_id": str(entry.household_id),
                 "actor_user_id": str(entry.actor_user_id),
-                "actor_name": actor.full_name if actor else None,
+                "actor_name": entry.actor.full_name if entry.actor else None,
                 "entity_type": entry.entity_type,
                 "entity_id": str(entry.entity_id) if entry.entity_id else None,
                 "action": entry.action,
